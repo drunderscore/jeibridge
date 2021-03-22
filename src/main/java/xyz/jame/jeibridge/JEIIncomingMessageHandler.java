@@ -2,6 +2,7 @@ package xyz.jame.jeibridge;
 
 import com.comphenix.protocol.utility.StreamSerializer;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.ItemStack;
@@ -9,6 +10,7 @@ import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.jetbrains.annotations.NotNull;
 import xyz.jame.jeibridge.event.GiveItemEvent;
 import xyz.jame.jeibridge.event.RequestCheatPermissionEvent;
+import xyz.jame.jeibridge.event.SetHotbarItemEvent;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -29,6 +31,60 @@ public class JEIIncomingMessageHandler implements PluginMessageListener
         handlers.put(PacketId.ServerBound.CHEAT_PERMISSION_REQUEST, this::onCheatPermissionRequest);
         handlers.put(PacketId.ServerBound.RECIPE_TRANSFER, this::onRecipeTransfer);
         handlers.put(PacketId.ServerBound.GIVE_ITEM, this::onGiveItem);
+        handlers.put(PacketId.ServerBound.DELETE_ITEM, this::onDeleteItem);
+        handlers.put(PacketId.ServerBound.SET_HOTBAR_ITEM, this::onSetHotbarItem);
+    }
+
+    private void onSetHotbarItem(Player ply, ByteBuffer buffer)
+    {
+        if (!bridge.hasPermission(ply))
+        {
+            bridge.sendCheatPermission(ply, false);
+            return;
+        }
+
+        var itemBytes = new byte[buffer.array().length - 1];
+        System.arraycopy(buffer.array(), 1, itemBytes, 0, itemBytes.length);
+        try
+        {
+            var item = StreamSerializer.getDefault().deserializeItemStackFromByteArray(itemBytes);
+            // FIXME: This is technically not correct -- the hotbar position is a varint, so the size is variable
+            // But the value should always be between 0-8, so we know it's only ever going to be a single byte.
+            buffer.position(buffer.array().length - 1);
+            var slot = readVarInt(buffer);
+            if (slot < 0 || slot > 8)
+                return;
+
+            var event = new SetHotbarItemEvent(ply, item, (byte) slot);
+            Bukkit.getPluginManager().callEvent(event);
+            if (!event.isCancelled())
+                ply.getInventory().setItem(event.getSlot(), event.getItem());
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void onDeleteItem(Player ply, ByteBuffer buffer)
+    {
+        if (!bridge.hasPermission(ply))
+        {
+            bridge.sendCheatPermission(ply, false);
+            return;
+        }
+
+        // This packet passes the item (not item stack) by giving us a forge registry id.
+        // We ofcourse, have no way of knowing what the hell that means.
+        // We can cheat a bit and just assume the player is deleting the item on their cursor
+        // as that is currently the only use for this packet.
+
+        // FIXME: It seems the client is slightly desynced after the fact, even with the client prediction...
+        // Picking up an item, deleting it, and then trying to pick up another item will initially fail
+        // I presume the client or server still thinks something is on the cursor?
+        // It's not a huge deal -- feature still works.
+        if (!ply.getItemOnCursor().getType().isEmpty())
+            ply.setItemOnCursor(null);
     }
 
     private void onGiveItem(Player player, ByteBuffer buffer)
@@ -43,11 +99,26 @@ public class JEIIncomingMessageHandler implements PluginMessageListener
         System.arraycopy(buffer.array(), 1, itemBytes, 0, itemBytes.length);
         try
         {
-            // TODO: Take the give mode into account
-            var event = new GiveItemEvent(player, StreamSerializer.getDefault().deserializeItemStackFromByteArray(itemBytes));
+            // FIXME: This is technically not correct -- the give mode is a varint, so the size is variable
+            // But the value should always be between 0-1, so we know it's only ever going to be a single byte.
+            var item = StreamSerializer.getDefault().deserializeItemStackFromByteArray(itemBytes);
+            buffer.position(buffer.array().length - 1);
+            var modeInt = readVarInt(buffer);
+
+            if (modeInt < 0 || modeInt >= GiveMode.VALUES.length)
+                return;
+
+            var mode = GiveMode.VALUES[modeInt];
+            var event = new GiveItemEvent(player, item, mode);
+
             Bukkit.getPluginManager().callEvent(event);
             if (event.getItem() != null && !event.isCancelled())
-                player.getInventory().addItem(event.getItem());
+            {
+                if (event.getMode() == GiveMode.INVENTORY)
+                    player.getInventory().addItem(event.getItem());
+                else if (event.getMode() == GiveMode.MOUSE_PICKUP)
+                    player.setItemOnCursor(event.getItem());
+            }
         }
         catch (IOException e)
         {
