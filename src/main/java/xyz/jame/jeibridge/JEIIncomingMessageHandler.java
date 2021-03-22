@@ -134,8 +134,6 @@ public class JEIIncomingMessageHandler implements PluginMessageListener
             openInv.setItem(craftingSlots.get(kv.getKey()), item.asOne());
             item.subtract();
         }
-
-//        new RecipeTransferProcess(recipe, craftingSlots, inventorySlots, openInv, ply, maxTransfer);
     }
 
     // Thanks to the smart people at https://wiki.vg/Data_types
