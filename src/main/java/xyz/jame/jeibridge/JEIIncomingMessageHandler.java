@@ -1,13 +1,16 @@
 package xyz.jame.jeibridge;
 
+import com.comphenix.protocol.utility.StreamSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.jetbrains.annotations.NotNull;
+import xyz.jame.jeibridge.event.GiveItemEvent;
 import xyz.jame.jeibridge.event.RequestCheatPermissionEvent;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -24,7 +27,41 @@ public class JEIIncomingMessageHandler implements PluginMessageListener
     {
         this.bridge = bridge;
         handlers.put(PacketId.ServerBound.CHEAT_PERMISSION_REQUEST, this::onCheatPermissionRequest);
-        handlers.put(PacketId.ServerBound.RECIPE_TRANSFER, this::onRecipeTransferRequest);
+        handlers.put(PacketId.ServerBound.RECIPE_TRANSFER, this::onRecipeTransfer);
+        handlers.put(PacketId.ServerBound.GIVE_ITEM, this::onGiveItem);
+    }
+
+    private void sendCheatPermission(Player ply, boolean permission)
+    {
+        ply.sendPluginMessage(bridge, JEIBridge.JEI_CHANNEL, new byte[]
+                {
+                        (byte) PacketId.ClientBound.CHEAT_PERMISSION.ordinal(),
+                        (byte) (permission ? 1 : 0)
+                });
+    }
+
+    private void onGiveItem(Player player, ByteBuffer buffer)
+    {
+        if (!bridge.hasPermission(player))
+        {
+            sendCheatPermission(player, false);
+            return;
+        }
+
+        var itemBytes = new byte[buffer.array().length - 1];
+        System.arraycopy(buffer.array(), 1, itemBytes, 0, itemBytes.length);
+        try
+        {
+            // TODO: Take the give mode into account
+            var event = new GiveItemEvent(player, StreamSerializer.getDefault().deserializeItemStackFromByteArray(itemBytes));
+            Bukkit.getPluginManager().callEvent(event);
+            if (event.getItem() != null && !event.isCancelled())
+                player.getInventory().addItem(event.getItem());
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -58,16 +95,12 @@ public class JEIIncomingMessageHandler implements PluginMessageListener
 
     private void onCheatPermissionRequest(Player ply, ByteBuffer buffer)
     {
-        var event = new RequestCheatPermissionEvent(ply, ply.hasPermission(JEIBridge.CHEAT_PERMISSION));
+        var event = new RequestCheatPermissionEvent(ply, bridge.hasPermission(ply));
         Bukkit.getPluginManager().callEvent(event);
-        ply.sendPluginMessage(bridge, JEIBridge.JEI_CHANNEL, new byte[]
-                {
-                        (byte) PacketId.ClientBound.CHEAT_PERMISSION.ordinal(),
-                        (byte) (event.hasPermission() ? 1 : 0)
-                });
+        sendCheatPermission(ply, event.hasPermission());
     }
 
-    private void onRecipeTransferRequest(Player ply, ByteBuffer buffer)
+    private void onRecipeTransfer(Player ply, ByteBuffer buffer)
     {
         var recipeSize = readVarInt(buffer);
         var recipe = new HashMap<Integer, Integer>(recipeSize);

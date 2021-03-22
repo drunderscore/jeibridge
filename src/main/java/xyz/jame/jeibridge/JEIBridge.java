@@ -1,6 +1,8 @@
 package xyz.jame.jeibridge;
 
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
 
 public class JEIBridge extends JavaPlugin
 {
@@ -12,5 +14,10 @@ public class JEIBridge extends JavaPlugin
     {
         getServer().getMessenger().registerIncomingPluginChannel(this, JEI_CHANNEL, new JEIIncomingMessageHandler(this));
         getServer().getMessenger().registerOutgoingPluginChannel(this, JEI_CHANNEL);
+    }
+    
+    boolean hasPermission(@NotNull Player player)
+    {
+        return player.hasPermission(CHEAT_PERMISSION);
     }
 }
