@@ -1,0 +1,5 @@
+name: JEIBridge
+version: 1.0.0
+main: xyz.jame.jeibridge.JEIBridge
+description: A network bridge between the JEI Forge mod and a Paper server.
+api-version: 1.16
