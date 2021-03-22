@@ -15,8 +15,17 @@ public class JEIBridge extends JavaPlugin
         getServer().getMessenger().registerIncomingPluginChannel(this, JEI_CHANNEL, new JEIIncomingMessageHandler(this));
         getServer().getMessenger().registerOutgoingPluginChannel(this, JEI_CHANNEL);
     }
-    
-    boolean hasPermission(@NotNull Player player)
+
+    public void sendCheatPermission(Player ply, boolean permission)
+    {
+        ply.sendPluginMessage(this, JEIBridge.JEI_CHANNEL, new byte[]
+                {
+                        (byte) PacketId.ClientBound.CHEAT_PERMISSION.ordinal(),
+                        (byte) (permission ? 1 : 0)
+                });
+    }
+
+    public boolean hasPermission(@NotNull Player player)
     {
         return player.hasPermission(CHEAT_PERMISSION);
     }

@@ -31,20 +31,11 @@ public class JEIIncomingMessageHandler implements PluginMessageListener
         handlers.put(PacketId.ServerBound.GIVE_ITEM, this::onGiveItem);
     }
 
-    private void sendCheatPermission(Player ply, boolean permission)
-    {
-        ply.sendPluginMessage(bridge, JEIBridge.JEI_CHANNEL, new byte[]
-                {
-                        (byte) PacketId.ClientBound.CHEAT_PERMISSION.ordinal(),
-                        (byte) (permission ? 1 : 0)
-                });
-    }
-
     private void onGiveItem(Player player, ByteBuffer buffer)
     {
         if (!bridge.hasPermission(player))
         {
-            sendCheatPermission(player, false);
+            bridge.sendCheatPermission(player, false);
             return;
         }
 
@@ -97,7 +88,7 @@ public class JEIIncomingMessageHandler implements PluginMessageListener
     {
         var event = new RequestCheatPermissionEvent(ply, bridge.hasPermission(ply));
         Bukkit.getPluginManager().callEvent(event);
-        sendCheatPermission(ply, event.hasPermission());
+        bridge.sendCheatPermission(ply, event.hasPermission());
     }
 
     private void onRecipeTransfer(Player ply, ByteBuffer buffer)
